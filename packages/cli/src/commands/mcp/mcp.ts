@@ -1,6 +1,9 @@
 import output from '../../output-manager';
 import type Client from '../../util/client';
 import { execSync } from 'child_process';
+import fs from 'fs';
+import { homedir } from 'os';
+import { join } from 'path';
 import { getLinkedProject } from '../../util/projects/link';
 import { packageName } from '../../util/pkg-name';
 import { outputAgentError } from '../../util/agent-output';
@@ -285,20 +288,32 @@ export default async function mcp(client: Client, opts: McpOptions = {}) {
             ? `${process.env.APPDATA}/Cursor/User/settings.json`
             : `${process.env.HOME}/.config/Cursor/User/settings.json`;
 
-      const cursorMcpPath =
-        process.platform === 'darwin'
-          ? `${process.env.HOME}/.cursor/mcp.json`
-          : process.platform === 'win32'
-            ? `${process.env.APPDATA}/Cursor/mcp.json`
-            : `${process.env.HOME}/.cursor/mcp.json`;
+      const cursorMcpPath = join(homedir(), '.cursor', 'mcp.json');
+      const cursorLegacyMcpPath =
+        process.platform === 'win32' && process.env.APPDATA
+          ? join(process.env.APPDATA, 'Cursor', 'mcp.json')
+          : undefined;
 
       let cursorAlreadyConfigured = false;
       try {
-        const fs = require('fs');
-
         // Check ~/.cursor/mcp.json first (Cursor's primary MCP config file)
         if (fs.existsSync(cursorMcpPath)) {
           const configContent = fs.readFileSync(cursorMcpPath, 'utf8');
+          const config = JSON.parse(configContent);
+          const mcpServers = config.mcpServers || {};
+          cursorAlreadyConfigured = Object.values(mcpServers).some(
+            (server: any) =>
+              server.url === mcpUrl || server.url === MCP_ENDPOINT
+          );
+        }
+
+        // Check %APPDATA%/Cursor/mcp.json on Windows if ~/.cursor/mcp.json doesn't have it
+        if (
+          !cursorAlreadyConfigured &&
+          cursorLegacyMcpPath &&
+          fs.existsSync(cursorLegacyMcpPath)
+        ) {
+          const configContent = fs.readFileSync(cursorLegacyMcpPath, 'utf8');
           const config = JSON.parse(configContent);
           const mcpServers = config.mcpServers || {};
           cursorAlreadyConfigured = Object.values(mcpServers).some(
@@ -344,7 +359,7 @@ export default async function mcp(client: Client, opts: McpOptions = {}) {
         if (process.platform === 'darwin') {
           execSync(`open '${oneClickUrl}'`);
         } else if (process.platform === 'win32') {
-          execSync(`start ${oneClickUrl}`);
+          execSync(`start "" "${oneClickUrl}"`);
         } else {
           execSync(`xdg-open '${oneClickUrl}'`);
         }
@@ -417,8 +432,6 @@ export default async function mcp(client: Client, opts: McpOptions = {}) {
 
       let vscodeAlreadyConfigured = false;
       try {
-        const fs = require('fs');
-
         // Check mcp.json first (primary MCP config file)
         if (fs.existsSync(vscodeMcpPath)) {
           const configContent = fs.readFileSync(vscodeMcpPath, 'utf8');
@@ -466,7 +479,7 @@ export default async function mcp(client: Client, opts: McpOptions = {}) {
         if (process.platform === 'darwin') {
           execSync(`open '${oneClickUrl}'`);
         } else if (process.platform === 'win32') {
-          execSync(`start ${oneClickUrl}`);
+          execSync(`start "" "${oneClickUrl}"`);
         } else {
           execSync(`xdg-open '${oneClickUrl}'`);
         }
